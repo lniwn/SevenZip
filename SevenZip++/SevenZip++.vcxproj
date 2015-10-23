@@ -124,13 +124,13 @@
     <OutDir>$(SolutionDir)Build\$(Platform)\Lib\</OutDir>
     <TargetName>7zpp_ud</TargetName>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
-    <IncludePath>D:\sdk\7z1506-src\CPP;$(IncludePath)</IncludePath>
+    <IncludePath>F:\work\code\open source\7z1506-src\CPP;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MBCS Debug|Win32'">
     <OutDir>$(SolutionDir)Build\$(Platform)\Lib\</OutDir>
     <TargetName>7zpp_ad</TargetName>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
-    <IncludePath>D:\sdk\7z1506-src\CPP;$(IncludePath)</IncludePath>
+    <IncludePath>F:\work\code\open source\7z1506-src\CPP;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Unicode Debug|x64'">
     <OutDir>$(SolutionDir)Build\$(Platform)\Lib\</OutDir>
@@ -144,13 +144,13 @@
     <OutDir>$(SolutionDir)Build\$(Platform)\Lib\</OutDir>
     <TargetName>7zpp_u</TargetName>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
-    <IncludePath>D:\sdk\7z1506-src\CPP;$(IncludePath)</IncludePath>
+    <IncludePath>F:\work\code\open source\7z1506-src\CPP;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='MBCS Release|Win32'">
     <OutDir>$(SolutionDir)Build\$(Platform)\Lib\</OutDir>
     <TargetName>7zpp_a</TargetName>
     <IntDir>$(Platform)\$(Configuration)\</IntDir>
-    <IncludePath>D:\sdk\7z1506-src\CPP;$(IncludePath)</IncludePath>
+    <IncludePath>F:\work\code\open source\7z1506-src\CPP;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Unicode Release|x64'">
     <OutDir>$(SolutionDir)Build\$(Platform)\Lib\</OutDir>

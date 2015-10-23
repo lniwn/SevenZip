@@ -14,7 +14,7 @@ public:
 	void Join(); ///< be careful, you may only need call me in the destructor
 	void Destroy();
 	void WaitDone();
-	bool IsAlive() const;
+	bool IsWorking() const;
 	DWORD GetThreadId() const;
 	void TaskDone();
 	void Start();

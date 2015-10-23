@@ -30,6 +30,8 @@ public:
 	void Stop();
 	void Join();
 	void WaitDone();
+	bool IsWorking();
+	bool ClearTasks();
 
 	template<typename I>
 	void SubmitTasks(I begin, I end)

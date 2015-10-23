@@ -44,6 +44,19 @@ void SevenWorkerPool::Stop()
 	FOR_EACH_THREAD0(TaskDone);
 }
 
+bool SevenWorkerPool::ClearTasks()
+{
+	if (IsWorking())
+	{
+		return false;
+	}
+	while (!m_taskList.empty())
+	{
+		m_taskList.pop();
+	}
+	return true;
+}
+
 
 std::function<void()> SevenWorkerPool::getTask()
 {
@@ -82,6 +95,18 @@ void SevenWorkerPool::WaitDone()
 unsigned int SevenWorkerPool::GetPoolSize() const
 {
 	return m_poolSize;
+}
+
+bool SevenWorkerPool::IsWorking()
+{
+	for (unsigned int i = 0; i < m_poolSize; ++i)
+	{
+		if (m_threads[i]->IsWorking())
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 

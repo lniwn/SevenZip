@@ -78,9 +78,9 @@ void SevenThread::run()
 }
 
 
-bool SevenThread::IsAlive() const
+bool SevenThread::IsWorking() const
 {
-	return m_alive;
+	return ::WaitForSingleObject(m_workEvent, 0) == WAIT_OBJECT_0;
 }
 
 
