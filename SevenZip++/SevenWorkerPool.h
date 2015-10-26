@@ -4,6 +4,7 @@
 #include <queue>
 #include <tuple>
 #include <list>
+#include "SevenTask.h"
 
 namespace SevenZip
 {
@@ -25,7 +26,7 @@ public:
 	SevenWorkerPool(void);
 	~SevenWorkerPool(void);
 
-	void Init();
+	void Init(unsigned int size = 0);
 	void Start();
 	void Stop();
 	void Join();
@@ -33,29 +34,44 @@ public:
 	bool IsWorking();
 	bool ClearTasks();
 
+	///< notify all tasks have done
+	void NotifyDone(const std::function<void()>& notify);
+
+	template<typename I, typename N>
+	void SubmitTasks(I begin, I end, N notifys)
+	{
+		while(begin != end)
+		{
+			m_taskList.push(SevenTask(*begin++, *notifys++));
+		}
+	}
+
 	template<typename I>
 	void SubmitTasks(I begin, I end)
 	{
 		while(begin != end)
 		{
-			m_taskList.push(*begin);
-			begin++;
+			m_taskList.push(*begin++);
 		}
 	}
 
 	void SubmitTask(const std::function<void()>& task);
-	void SetPoolSize(unsigned int size);
+	void SubmitTask(const std::function<void()>& task, const std::function<void()>& notify);
+	//void SetPoolSize(unsigned int size);
 	unsigned int GetPoolSize() const;
 
 private:
-	std::function<void()> getTask();
+	SevenTask getTask();
+	static DWORD WINAPI DaemonThreadProc(_In_ LPVOID lpParameter);
 	
 private:
 	std::vector< std::shared_ptr<SevenThread> > m_threads;
-	
-	std::queue< std::function<void()> > m_taskList;
+	HANDLE m_daemon;
+	bool m_stop;
+	std::queue<SevenTask> m_taskList;
 	CRITICAL_SECTION m_csObj;
 	unsigned int m_poolSize;
+	std::function<void()> m_notify_done;
 };
 
 class SimpleMemoryPool:public NonCopyable

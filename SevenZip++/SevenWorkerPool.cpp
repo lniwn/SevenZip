@@ -1,6 +1,7 @@
 #include "StdAfx.h"
 #include "SevenThread.h"
 #include "SevenWorkerPool.h"
+#include <cassert>
 
 
 namespace SevenZip
@@ -12,7 +13,15 @@ SevenWorkerPool::~SevenWorkerPool(void)
 {
 	FOR_EACH_THREAD0(Destroy)
 	Join();
-
+	if (m_daemon)
+	{
+		m_stop = true;
+		if ((DWORD) -1 != ::ResumeThread(m_daemon))
+		{
+			::WaitForSingleObject(m_daemon, INFINITE);
+		}
+		::CloseHandle(m_daemon);
+	}
 	::DeleteCriticalSection(&m_csObj);
 
 }
@@ -22,21 +31,33 @@ SevenWorkerPool::SevenWorkerPool(void)
 	::InitializeCriticalSectionAndSpinCount(&m_csObj, 5000);
 	SYSTEM_INFO si;
 	::GetSystemInfo(&si);
+	m_stop = false;
 	m_poolSize = si.dwNumberOfProcessors * 2 + 2;
+	m_notify_done = nullptr;
 }
 
-void SevenWorkerPool::Init()
+void SevenWorkerPool::Init(unsigned int size)
 {
+	if (size > 0)
+	{
+		m_poolSize = size;
+	}
 	for (unsigned int i = 0; i < m_poolSize; ++i)
 	{
 		auto task = std::make_shared<SevenThread>(this);
 		m_threads.push_back(task);
 	}
+
+	m_daemon = ::CreateThread(nullptr, 0, DaemonThreadProc, this, CREATE_SUSPENDED, nullptr);
 }
 
 void SevenWorkerPool::Start()
 {
 	FOR_EACH_THREAD0(Start);
+	if (m_notify_done)
+	{
+		::ResumeThread(m_daemon);
+	}
 }
 
 void SevenWorkerPool::Stop()
@@ -58,13 +79,13 @@ bool SevenWorkerPool::ClearTasks()
 }
 
 
-std::function<void()> SevenWorkerPool::getTask()
+SevenTask SevenWorkerPool::getTask()
 {
 	AUTO_SCOPE_LOCK();
 	if (m_taskList.empty())
 	{
 		Stop();
-		return std::function<void()>();
+		return SevenTask();
 	}
 	auto task = m_taskList.front();
 	m_taskList.pop();
@@ -77,14 +98,19 @@ void SevenWorkerPool::Join()
 	FOR_EACH_THREAD0(Join);
 }
 
-void SevenWorkerPool::SetPoolSize(unsigned int size)
-{
-	m_poolSize = size;
-}
+//void SevenWorkerPool::SetPoolSize(unsigned int size)
+//{
+//	m_poolSize = size;
+//}
 
 void SevenWorkerPool::SubmitTask(const std::function<void()>& task)
 {
-	m_taskList.push(task);
+	m_taskList.push(SevenTask(task));
+}
+
+void SevenWorkerPool::SubmitTask(const std::function<void()>& task, const std::function<void()>& notify)
+{
+	m_taskList.push(SevenTask(task, notify));
 }
 
 void SevenWorkerPool::WaitDone()
@@ -107,6 +133,25 @@ bool SevenWorkerPool::IsWorking()
 		}
 	}
 	return false;
+}
+
+void SevenWorkerPool::NotifyDone(const std::function<void()>& notify)
+{
+	m_notify_done = notify;
+}
+
+DWORD WINAPI SevenWorkerPool::DaemonThreadProc(_In_ LPVOID lpParameter)
+{
+	auto* pthis = reinterpret_cast<SevenWorkerPool*>(lpParameter);
+	while (!pthis->m_stop)
+	{
+		pthis->WaitDone();
+		assert(pthis->m_notify_done);
+		pthis->m_notify_done();
+		pthis->m_notify_done = nullptr;
+		::SuspendThread(::GetCurrentThread());
+	}
+	return 0;
 }
 
 

@@ -33,7 +33,6 @@ private:
 	bool m_alive;
 	bool m_needWorking;
 	SevenWorkerPool* m_pool;
-
 };
 
 }

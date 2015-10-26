@@ -65,10 +65,8 @@ void SevenThread::run()
 		while (m_needWorking)
 		{
 			auto task = m_pool->getTask();
-			if (task)
-			{
-				task();
-			}
+			task.Task();
+			task.Notify();
 		}
 		::SetEvent(m_doneEvent);
 	}

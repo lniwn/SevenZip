@@ -259,7 +259,8 @@ xcopy $(ProjectDir)SevenZipCompressor.h ..\Samples\Simple\SevenZip\include /R /Y
 xcopy $(ProjectDir)SevenZipException.h ..\Samples\Simple\SevenZip\include /R /Y /I
 xcopy $(ProjectDir)SevenZipExtractor.h ..\Samples\Simple\SevenZip\include /R /Y /I
 xcopy $(ProjectDir)SevenZipHasher.h ..\Samples\Simple\SevenZip\include /R /Y /I
-xcopy $(ProjectDir)SevenZipLibrary.h ..\Samples\Simple\SevenZip\include /R /Y /I</Command>
+xcopy $(ProjectDir)SevenZipLibrary.h ..\Samples\Simple\SevenZip\include /R /Y /I
+xcopy $(ProjectDir)NonCopyable.h ..\Samples\Simple\SevenZip\include /R /Y /I</Command>
     </PostBuildEvent>
     <PostBuildEvent>
       <Message>拷贝生成的lib文件</Message>
@@ -329,6 +330,7 @@ xcopy $(ProjectDir)SevenZipLibrary.h ..\Samples\Simple\SevenZip\include /R /Y /I
     <ClInclude Include="ArchiveUpdateCallback.h" />
     <ClInclude Include="NonCopyable.h" />
     <ClInclude Include="SevenCryptLibrary.h" />
+    <ClInclude Include="SevenTask.h" />
     <ClInclude Include="SevenThread.h" />
     <ClInclude Include="SevenWorkerPool.h" />
     <ClInclude Include="SevenZipHasher.h" />
