@@ -12,12 +12,8 @@ public:
 	~SevenThread(void);
 
 	void Join(); ///< be careful, you may only need call me in the destructor
-	void Destroy();
-	void WaitDone();
-	bool IsWorking() const;
+	void Destroy(DWORD timeout = 0);
 	DWORD GetThreadId() const;
-	void TaskDone();
-	void Start();
 	HANDLE GetThreadHandle() const;
 
 private:
@@ -26,12 +22,8 @@ private:
 
 private:
 	HANDLE m_hthread;
-	HANDLE m_workEvent;
-	HANDLE m_doneEvent;
 	DWORD m_id;
 	bool m_stop;
-	bool m_alive;
-	bool m_needWorking;
 	SevenWorkerPool* m_pool;
 };
 

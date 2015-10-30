@@ -8,27 +8,14 @@ namespace SevenZip
 SevenThread::SevenThread(SevenWorkerPool* pool)
 {
 	m_hthread = ::CreateThread(nullptr, 0, ThreadProc, this, 0, &m_id);
-	m_workEvent = ::CreateEvent(nullptr, TRUE, FALSE, nullptr);
-	m_doneEvent = ::CreateEvent(nullptr, TRUE, FALSE, nullptr);
 	m_pool = pool;
 	m_stop = false;
-	m_alive = false;
-	m_needWorking = false;
 }
 
 
 SevenThread::~SevenThread(void)
 {
 	Destroy();
-	Join();
-	::CloseHandle(m_hthread);
-	m_hthread = nullptr;
-
-	::CloseHandle(m_workEvent);
-	m_workEvent = nullptr;
-
-	::CloseHandle(m_doneEvent);
-	m_doneEvent = nullptr;
 }
 
 DWORD WINAPI SevenThread::ThreadProc(_In_ LPVOID lpParameter)
@@ -44,66 +31,43 @@ void SevenThread::Join()
 	::WaitForSingleObject(m_hthread, INFINITE);
 }
 
-void SevenThread::Destroy()
+void SevenThread::Destroy(DWORD timeout)
 {
 	m_stop = true;
-	m_needWorking = false;
-	::SetEvent(m_workEvent);
+	timeout = timeout>0 ? timeout : INFINITE;
+	if (WAIT_TIMEOUT == ::WaitForSingleObject(m_hthread, timeout))
+	{
+		::SuspendThread(m_hthread);
+		::TerminateThread(m_hthread, -1);
+	}
+	::CloseHandle(m_hthread);
+	m_hthread = nullptr;
 }
 
 
 void SevenThread::run()
 {
-	m_alive = true;
-	while (true)
+	while (!m_stop)
 	{
-		::WaitForSingleObject(m_workEvent, INFINITE);
+		auto task = m_pool->getTask();
 		if (m_stop)
 		{
 			break;
 		}
-		while (m_needWorking)
+		if (task)
 		{
-			auto task = m_pool->getTask();
 			task.Task();
-			task.Notify();
+			if (task.Notify)
+			{
+				task.Notify();
+			}
 		}
-		::SetEvent(m_doneEvent);
 	}
-	::SetEvent(m_doneEvent);
-	m_alive = false;
-	m_stop = false;
 }
-
-
-bool SevenThread::IsWorking() const
-{
-	return ::WaitForSingleObject(m_workEvent, 0) == WAIT_OBJECT_0;
-}
-
 
 DWORD SevenThread::GetThreadId() const
 {
 	return m_id;
-}
-
-void SevenThread::TaskDone()
-{
-	::ResetEvent(m_workEvent);
-	m_needWorking = false;
-}
-
-
-void SevenThread::WaitDone()
-{
-	::WaitForSingleObject(m_doneEvent, INFINITE);
-}
-
-void SevenThread::Start()
-{
-	m_needWorking = true;
-	::SetEvent(m_workEvent);
-	::ResetEvent(m_doneEvent);
 }
 
 

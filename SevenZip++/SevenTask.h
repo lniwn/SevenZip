@@ -7,20 +7,27 @@ class SevenTask
 public:
 	SevenTask()
 	{
-		Task = [](){};
-		Notify = [](){};
 	}
 
 	explicit SevenTask(const std::function<void()>& task)
 	{
 		Task = task;
-		Notify = [](){};
 	}
 
 	SevenTask(const std::function<void()>& task, const std::function<void()>& notify)
 	{
 		Task = task;
 		Notify = notify;
+	}
+
+	operator bool() const
+	{
+		return static_cast<bool>(Task);
+	}
+
+	void operator()()
+	{
+		Task();
 	}
 
 	std::function<void()> Task;

@@ -3,7 +3,7 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Unicode Debug|Win32'">
     <LocalDebuggerEnvironment>..\Bin\Win32\Unicode Debug</LocalDebuggerEnvironment>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>h D:\test\gshx *.*</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>h "E:\git\explorerplusplus\Explorer++" *.*</LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Unicode Release|Win32'">
     <LocalDebuggerEnvironment>..\Bin\Win32\Unicode Release</LocalDebuggerEnvironment>

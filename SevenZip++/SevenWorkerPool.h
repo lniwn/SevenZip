@@ -27,12 +27,14 @@ public:
 	~SevenWorkerPool(void);
 
 	void Init(unsigned int size = 0);
+	void Uninit();
 	void Start();
 	void Stop();
 	void Join();
-	void WaitDone();
+	bool WaitDone(DWORD timeout = 0);
 	bool IsWorking();
 	bool ClearTasks();
+	void Execute(const std::function<void()>& task, std::function<void()> notify = nullptr);
 
 	///< notify all tasks have done
 	void NotifyDone(const std::function<void()>& notify);
@@ -72,6 +74,9 @@ private:
 	CRITICAL_SECTION m_csObj;
 	unsigned int m_poolSize;
 	std::function<void()> m_notify_done;
+	HANDLE m_workingEvent;
+	HANDLE m_doneEvent;
+	unsigned int m_doneCount;
 };
 
 class SimpleMemoryPool:public NonCopyable

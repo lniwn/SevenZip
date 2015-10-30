@@ -11,58 +11,80 @@ namespace SevenZip
 
 SevenWorkerPool::~SevenWorkerPool(void)
 {
-	FOR_EACH_THREAD0(Destroy)
-	Join();
-	if (m_daemon)
-	{
-		m_stop = true;
-		if ((DWORD) -1 != ::ResumeThread(m_daemon))
-		{
-			::WaitForSingleObject(m_daemon, INFINITE);
-		}
-		::CloseHandle(m_daemon);
-	}
-	::DeleteCriticalSection(&m_csObj);
-
+	Uninit();
 }
 
 SevenWorkerPool::SevenWorkerPool(void)
 {
-	::InitializeCriticalSectionAndSpinCount(&m_csObj, 5000);
-	SYSTEM_INFO si;
-	::GetSystemInfo(&si);
-	m_stop = false;
-	m_poolSize = si.dwNumberOfProcessors * 2 + 2;
-	m_notify_done = nullptr;
+	m_daemon = nullptr;
 }
 
 void SevenWorkerPool::Init(unsigned int size)
 {
-	if (size > 0)
+	if (!m_daemon)
 	{
-		m_poolSize = size;
-	}
-	for (unsigned int i = 0; i < m_poolSize; ++i)
-	{
-		auto task = std::make_shared<SevenThread>(this);
-		m_threads.push_back(task);
-	}
+		::InitializeCriticalSectionAndSpinCount(&m_csObj, 5000);
+		SYSTEM_INFO si;
+		::GetSystemInfo(&si);
+		m_stop = false;
+		m_poolSize = si.dwNumberOfProcessors * 2 + 2;
+		m_notify_done = nullptr;
 
-	m_daemon = ::CreateThread(nullptr, 0, DaemonThreadProc, this, CREATE_SUSPENDED, nullptr);
+		if (size > 0)
+		{
+			m_poolSize = size;
+		}
+		m_workingEvent = ::CreateEvent(nullptr, TRUE, FALSE, nullptr);
+		m_doneEvent = ::CreateEvent(nullptr, TRUE, TRUE, nullptr);
+		m_daemon = ::CreateThread(nullptr, 0, DaemonThreadProc, this, 0, nullptr);
+		::SetThreadPriority(m_daemon, THREAD_PRIORITY_BELOW_NORMAL);
+
+		for (unsigned int i = 0; i < m_poolSize; ++i)
+		{
+			auto task = std::make_shared<SevenThread>(this);
+			m_threads.push_back(task);
+		}
+	}
+}
+
+void SevenWorkerPool::Uninit()
+{
+	if (m_daemon)
+	{
+		m_stop = true;
+		::SetEvent(m_workingEvent);
+		FOR_EACH_THREAD0(Destroy)
+		
+		::SetEvent(m_doneEvent);
+		::WaitForSingleObject(m_daemon, INFINITE);
+		::CloseHandle(m_daemon);
+		m_daemon = nullptr;
+
+		::DeleteCriticalSection(&m_csObj);
+		::CloseHandle(m_workingEvent);
+		::CloseHandle(m_doneEvent);
+	}
 }
 
 void SevenWorkerPool::Start()
 {
-	FOR_EACH_THREAD0(Start);
-	if (m_notify_done)
+	assert(m_daemon);
+	if (!IsWorking())
 	{
-		::ResumeThread(m_daemon);
+		for each(auto& t in m_threads)
+		{
+			::SetThreadPriority(t->GetThreadHandle(), THREAD_PRIORITY_NORMAL);
+		}
+		m_doneCount = 0;
+		::ResetEvent(m_doneEvent);
+		::SetEvent(m_workingEvent);
 	}
+	
 }
 
 void SevenWorkerPool::Stop()
 {
-	FOR_EACH_THREAD0(TaskDone);
+	::ResetEvent(m_workingEvent);
 }
 
 bool SevenWorkerPool::ClearTasks()
@@ -81,15 +103,37 @@ bool SevenWorkerPool::ClearTasks()
 
 SevenTask SevenWorkerPool::getTask()
 {
-	AUTO_SCOPE_LOCK();
-	if (m_taskList.empty())
+	::WaitForSingleObject(m_workingEvent, INFINITE);
 	{
-		Stop();
-		return SevenTask();
+		AUTO_SCOPE_LOCK();
+		auto cur_thread = ::GetCurrentThread();
+		if (m_taskList.empty())
+		{
+			if (::GetThreadPriority(cur_thread) != THREAD_PRIORITY_IDLE)
+			{
+				if(m_poolSize <= ++m_doneCount)
+				{
+					::SetEvent(m_doneEvent);
+					::ResetEvent(m_workingEvent);
+				}
+				::SetThreadPriority(cur_thread, THREAD_PRIORITY_IDLE);
+			}
+			::SwitchToThread();
+			
+			return SevenTask();
+		}
+		else
+		{
+			if (::GetThreadPriority(cur_thread) != THREAD_PRIORITY_NORMAL)
+			{
+				::SetThreadPriority(cur_thread, THREAD_PRIORITY_NORMAL);
+				--m_doneCount;
+			}
+			auto task = m_taskList.front();
+			m_taskList.pop();
+			return task;
+		}
 	}
-	auto task = m_taskList.front();
-	m_taskList.pop();
-	return task;
 }
 
 
@@ -113,9 +157,19 @@ void SevenWorkerPool::SubmitTask(const std::function<void()>& task, const std::f
 	m_taskList.push(SevenTask(task, notify));
 }
 
-void SevenWorkerPool::WaitDone()
+bool SevenWorkerPool::WaitDone(DWORD timeout)
 {
-	FOR_EACH_THREAD0(WaitDone);
+	timeout = timeout>0 ? timeout : INFINITE;
+	return WAIT_TIMEOUT != ::WaitForSingleObject(m_doneEvent, timeout);
+}
+
+void SevenWorkerPool::Execute(const std::function<void()>& task, std::function<void()> notify)
+{
+	{
+		AUTO_SCOPE_LOCK();
+		SubmitTask(task, notify);
+	}
+	Start();
 }
 
 unsigned int SevenWorkerPool::GetPoolSize() const
@@ -125,14 +179,7 @@ unsigned int SevenWorkerPool::GetPoolSize() const
 
 bool SevenWorkerPool::IsWorking()
 {
-	for (unsigned int i = 0; i < m_poolSize; ++i)
-	{
-		if (m_threads[i]->IsWorking())
-		{
-			return true;
-		}
-	}
-	return false;
+	return WAIT_TIMEOUT == ::WaitForSingleObject(m_doneEvent, 0);
 }
 
 void SevenWorkerPool::NotifyDone(const std::function<void()>& notify)
@@ -145,11 +192,13 @@ DWORD WINAPI SevenWorkerPool::DaemonThreadProc(_In_ LPVOID lpParameter)
 	auto* pthis = reinterpret_cast<SevenWorkerPool*>(lpParameter);
 	while (!pthis->m_stop)
 	{
+		::WaitForSingleObject(pthis->m_workingEvent, INFINITE);
 		pthis->WaitDone();
-		assert(pthis->m_notify_done);
-		pthis->m_notify_done();
-		pthis->m_notify_done = nullptr;
-		::SuspendThread(::GetCurrentThread());
+		if (pthis->m_notify_done)
+		{
+			pthis->m_notify_done();
+			pthis->m_notify_done = nullptr;
+		}
 	}
 	return 0;
 }
