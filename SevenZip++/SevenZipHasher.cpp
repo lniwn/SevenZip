@@ -24,6 +24,7 @@ SevenZipHasher::SevenZipHasher(const SevenZipLibrary& seven, const SevenCryptLib
 
 SevenZipHasher::~SevenZipHasher(void)
 {
+	m_threadpool->Uninit();
 	delete m_threadpool;
 	delete m_mempool;
 	::DeleteCriticalSection(&m_csObj);
@@ -87,6 +88,20 @@ void SevenZipHasher::fileHashTask(NHasherCate::HasherCate c, TString file_path)
 		//m_filesHash.push_back(std::make_tuple(hash, file_path));
 		m_filesHash[file_path] = hash;
 	}
+}
+
+void SevenZipHasher::onTaskCallback(const UserTaskCallback& user_func, const TString& file_path)
+{
+	std::string hash_value;
+	{
+		AUTO_SCOPE_LOCK();
+		auto itFind = m_filesHash.find(file_path);
+		if (itFind != m_filesHash.end())
+		{
+			hash_value = itFind->second;
+		}
+	}
+	user_func(file_path, hash_value);
 }
 
 std::string SevenZipHasher::fileHash(NHasherCate::HasherCate c, const TCHAR* file_path)

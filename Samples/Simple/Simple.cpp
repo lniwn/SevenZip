@@ -40,9 +40,9 @@ int CreateArchive(int argc, TCHAR** argv)
 	return 0;
 }
 
-void PrintFileHash(const SevenZip::TString& file_path)
+void PrintFileHash(const SevenZip::TString& file_path, const std::string& hash_value)
 {
-
+	_tprintf(_T("%s --> %S\n"), file_path.c_str(), hash_value.c_str());
 }
 
 int HashFiles(int argc, TCHAR** argv)
@@ -66,10 +66,7 @@ int HashFiles(int argc, TCHAR** argv)
 	SevenZip::SevenZipHasher hasherlib(lib, crypt_lib);
 
 	hasherlib.FilesMd5(targetDir, pattern, PrintFileHash);
-	//for (auto it = hashes.begin(); it != hashes.end(); ++it)
-	//{
-	//	_tprintf(_T("%s --> %S\n"), std::get<1>(*it).c_str(), std::get<0>(*it).c_str());
-	//}
+	system("pause");
 	_tprintf(_T("\n"));
 
 	return 0;

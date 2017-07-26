@@ -36,10 +36,12 @@ private:
 	{std::string _src = memoryHash(cate, data, length); return strTotstr(_src);}
 
 #define DECLARE_FILES_HASH(method, cate) void \
-	Files##method(const TCHAR* dir_path, const TCHAR* pattern, std::function<void(const TString&)> result_call) \
-	{ filesHash(cate, dir_path, pattern, result_call);}
+	Files##method(const TCHAR* dir_path, const TCHAR* pattern, const UserTaskCallback& result_call) \
+	{ filesHash(cate, dir_path, pattern, std::bind(&SevenZipHasher::onTaskCallback, this, result_call, std::placeholders::_1));}
 
 public:
+	typedef std::function<void(const TString&, const std::string&)> UserTaskCallback;
+
 	SevenZipHasher(const SevenZipLibrary& seven, const SevenCryptLibrary& crypt);
 	~SevenZipHasher(void);
 
@@ -81,6 +83,7 @@ private:
 
 	// task为异步调用，会储存在内部queue中
 	void fileHashTask(NHasherCate::HasherCate c, TString file_path);
+	void onTaskCallback(const UserTaskCallback& user_func, const TString& file_path);
 
 private:
 	static const unsigned int INNER_MEM_SIZE = 1024;
