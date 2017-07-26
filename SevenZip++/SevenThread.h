@@ -8,13 +8,21 @@ class SevenWorkerPool;
 class SevenThread:public NonCopyable
 {
 public:
-	SevenThread(SevenWorkerPool* pool);
+	enum ThreadState
+	{
+		THREAD_CREATE, // 创建初期，尚未执行线程体
+		THREAD_SUSPEND, // 线程被挂起
+		THREAD_RUNNING, // 线程正在执行
+		THREAD_DEAD // 线程被销毁
+	};
+	explicit SevenThread(SevenWorkerPool* pool);
 	~SevenThread(void);
 
-	void Join(); ///< be careful, you may only need call me in the destructor
+	void Join();
 	void Destroy(DWORD timeout = 0);
-	DWORD GetThreadId() const;
-	HANDLE GetThreadHandle() const;
+	DWORD GetThreadId() const {return m_id;}
+	HANDLE GetThreadHandle() const {return m_hthread;}
+	ThreadState GetThreadState() {return static_cast<ThreadState>(::InterlockedCompareExchange(&m_state, m_state, m_state));}
 
 private:
 	static DWORD WINAPI ThreadProc(_In_ LPVOID lpParameter);
@@ -23,8 +31,8 @@ private:
 private:
 	HANDLE m_hthread;
 	DWORD m_id;
-	bool m_stop;
 	SevenWorkerPool* m_pool;
+	LONG m_state;
 };
 
 }

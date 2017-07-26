@@ -20,63 +20,60 @@ private:
 
 class SevenWorkerPool:public NonCopyable
 {
-#define AUTO_SCOPE_LOCK() AUTO_CRITICAL_SECTION _(&m_csObj)
+#define CONCAT_IMPL( x, y ) x##y
+#define MACRO_CONCAT( x, y ) CONCAT_IMPL( x, y )
+#define AUTO_SCOPE_LOCK() AUTO_CRITICAL_SECTION MACRO_CONCAT(ThreadSafe, __COUNTER__)(&m_csObj)
+
 friend class SevenThread;
 public:
 	SevenWorkerPool(void);
 	~SevenWorkerPool(void);
 
-	void Init(unsigned int size = 0);
+	bool Init(unsigned int size = 0);
 	void Uninit();
-	void Start();
-	void Stop();
-	void Join();
-	bool WaitDone(DWORD timeout = 0);
 	bool IsWorking();
-	bool ClearTasks();
-	void Execute(const std::function<void()>& task, std::function<void()> notify = nullptr);
+	void Terminate();
 
-	///< notify all tasks have done
-	void NotifyDone(const std::function<void()>& notify);
-
-	template<typename I, typename N>
-	void SubmitTasks(I begin, I end, N notifys)
+	template<typename I>
+	void SubmitTasks(I begin, I end, const std::function<void()>& notify)
 	{
+		//AUTO_SCOPE_LOCK();
 		while(begin != end)
 		{
-			m_taskList.push(SevenTask(*begin++, *notifys++));
+			//m_taskList.push(SevenTask(*begin++, notify));
+			SubmitTask(*begin++, notify);
 		}
 	}
 
 	template<typename I>
 	void SubmitTasks(I begin, I end)
 	{
+		//AUTO_SCOPE_LOCK();
 		while(begin != end)
 		{
-			m_taskList.push(*begin++);
+			//m_taskList.push(SevenTask(*begin++));
+			SubmitTask(*begin++);
 		}
 	}
 
-	void SubmitTask(const std::function<void()>& task);
-	void SubmitTask(const std::function<void()>& task, const std::function<void()>& notify);
+	void SubmitTask(const std::function<void()>& task, const std::function<void()>& notify = nullptr);
 	//void SetPoolSize(unsigned int size);
 	unsigned int GetPoolSize() const;
 
 private:
-	SevenTask getTask();
+	bool runTask();
 	static DWORD WINAPI DaemonThreadProc(_In_ LPVOID lpParameter);
+	bool needTerminate();
+	void setTerminate(bool yes);
 	
 private:
-	std::vector< std::shared_ptr<SevenThread> > m_threads;
-	HANDLE m_daemon;
-	bool m_stop;
-	std::queue<SevenTask> m_taskList;
+	std::queue<SevenTask> m_taskList; // 任务队列
+	std::list<std::shared_ptr<SevenThread> > m_workList; // 工作线程队列
 	CRITICAL_SECTION m_csObj;
-	unsigned int m_poolSize;
-	std::function<void()> m_notify_done;
-	HANDLE m_workingEvent;
-	HANDLE m_doneEvent;
-	unsigned int m_doneCount;
+	unsigned int m_pool_size_;
+	HANDLE m_hWorkingEvt;
+	HANDLE m_hIdleEvt;
+	LONG m_lTerminate;
 };
 
 class SimpleMemoryPool:public NonCopyable

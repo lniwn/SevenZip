@@ -43,44 +43,50 @@ void SevenZipHasher::readFile(std::ifstream* _file, const TCHAR* file_path)
 	//_file->seekg(0, _file->beg);
 }
 
-void SevenZipHasher::submitTask(NHasherCate::HasherCate c, const TString& file_path)
+void SevenZipHasher::submitTask(NHasherCate::HasherCate c, const TString& file_path, const std::function<void(const TString&)>& result_call)
 {
 	auto task = std::bind(&SevenZipHasher::fileHashTask, this, c, file_path);
-	m_threadpool->SubmitTask(task);
+	m_threadpool->SubmitTask(task, std::bind(result_call, file_path));
 }
 
 
-void SevenZipHasher::filesHash(NHasherCate::HasherCate c, const TCHAR* direct, const TCHAR* pattern)
+void SevenZipHasher::filesHash(NHasherCate::HasherCate c, const TCHAR* direct, const TCHAR* pattern, const std::function<void(const TString&)>& result_call)
 {
-	m_filesHash.clear();
+	{
+		AUTO_SCOPE_LOCK();
+		m_filesHash.clear();
+	}
 	auto files = intl::FileSys::GetFilesInDirectory(direct, pattern, true);
 
 	for (auto it = files.begin(); it != files.end(); ++it)
 	{
-		submitTask(c, it->FilePath);
+		submitTask(c, it->FilePath, result_call);
 	}
-	m_threadpool->Start();
-	m_threadpool->WaitDone();
 }
 
 
-void SevenZipHasher::filesHash(NHasherCate::HasherCate c, const std::vector<TString>& files)
+void SevenZipHasher::filesHash(NHasherCate::HasherCate c, const std::vector<TString>& files, const std::function<void(const TString&)>& result_call)
 {
-	m_filesHash.clear();
+	{
+		AUTO_SCOPE_LOCK();
+		m_filesHash.clear();
+	}
+	
 	for (auto it = files.begin(); it != files.end(); ++it)
 	{
-		submitTask(c, *it);
+		submitTask(c, *it, result_call);
 	}
-	m_threadpool->Start();
-	m_threadpool->WaitDone();
 }
 
 
 void SevenZipHasher::fileHashTask(NHasherCate::HasherCate c, TString file_path)
 {
 	auto hash = fileHash(c, file_path.c_str());
-	AUTO_SCOPE_LOCK();
-	m_filesHash.push_back(std::make_tuple(hash, file_path));
+	{
+		AUTO_SCOPE_LOCK();
+		//m_filesHash.push_back(std::make_tuple(hash, file_path));
+		m_filesHash[file_path] = hash;
+	}
 }
 
 std::string SevenZipHasher::fileHash(NHasherCate::HasherCate c, const TCHAR* file_path)

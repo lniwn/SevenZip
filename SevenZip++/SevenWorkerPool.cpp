@@ -7,7 +7,8 @@
 namespace SevenZip
 {
 
-#define FOR_EACH_THREAD0(method) for (unsigned int _ = 0; _ < m_poolSize; ++_){m_threads[_]->##method();}
+#define FOR_EACH_THREAD0(method) for (unsigned int _ = 0; _ < m_pool_size_; ++_)\
+	{auto beg = m_workList.begin(); std::advance(beg, _); (*beg)->##method();}
 
 SevenWorkerPool::~SevenWorkerPool(void)
 {
@@ -16,130 +17,84 @@ SevenWorkerPool::~SevenWorkerPool(void)
 
 SevenWorkerPool::SevenWorkerPool(void)
 {
-	m_daemon = nullptr;
 }
 
-void SevenWorkerPool::Init(unsigned int size)
+bool SevenWorkerPool::Init(unsigned int size)
 {
-	if (!m_daemon)
+	::InitializeCriticalSectionAndSpinCount(&m_csObj, 4000);
+	SYSTEM_INFO si;
+	::GetSystemInfo(&si);
+	m_pool_size_ = si.dwNumberOfProcessors > 0 ? si.dwNumberOfProcessors : 2;
+
+	m_hWorkingEvt = ::CreateEvent(NULL, FALSE, FALSE, NULL);
+	m_hIdleEvt = ::CreateEvent(NULL, TRUE, FALSE, NULL);
+	setTerminate(false);
+
+	if (size > 0)
 	{
-		::InitializeCriticalSectionAndSpinCount(&m_csObj, 5000);
-		SYSTEM_INFO si;
-		::GetSystemInfo(&si);
-		m_stop = false;
-		m_poolSize = si.dwNumberOfProcessors * 2 + 2;
-		m_notify_done = nullptr;
-
-		if (size > 0)
-		{
-			m_poolSize = size;
-		}
-		m_workingEvent = ::CreateEvent(nullptr, TRUE, FALSE, nullptr);
-		m_doneEvent = ::CreateEvent(nullptr, TRUE, TRUE, nullptr);
-		m_daemon = ::CreateThread(nullptr, 0, DaemonThreadProc, this, 0, nullptr);
-		::SetThreadPriority(m_daemon, THREAD_PRIORITY_BELOW_NORMAL);
-
-		for (unsigned int i = 0; i < m_poolSize; ++i)
-		{
-			auto task = std::make_shared<SevenThread>(this);
-			m_threads.push_back(task);
-		}
+		m_pool_size_ = size;
 	}
+
+	for (unsigned int i = 0; i < m_pool_size_; ++i)
+	{
+		auto task = std::make_shared<SevenThread>(this);
+		m_workList.push_back(task);
+	}
+	
+	return true;
 }
 
 void SevenWorkerPool::Uninit()
 {
-	if (m_daemon)
-	{
-		m_stop = true;
-		::SetEvent(m_workingEvent);
-		FOR_EACH_THREAD0(Destroy)
-		
-		::SetEvent(m_doneEvent);
-		::WaitForSingleObject(m_daemon, INFINITE);
-		::CloseHandle(m_daemon);
-		m_daemon = nullptr;
-
-		::DeleteCriticalSection(&m_csObj);
-		::CloseHandle(m_workingEvent);
-		::CloseHandle(m_doneEvent);
-	}
-}
-
-void SevenWorkerPool::Start()
-{
-	assert(m_daemon);
-	if (!IsWorking())
-	{
-		for each(auto& t in m_threads)
-		{
-			::SetThreadPriority(t->GetThreadHandle(), THREAD_PRIORITY_NORMAL);
-		}
-		m_doneCount = 0;
-		::ResetEvent(m_doneEvent);
-		::SetEvent(m_workingEvent);
-	}
-	
-}
-
-void SevenWorkerPool::Stop()
-{
-	::ResetEvent(m_workingEvent);
-}
-
-bool SevenWorkerPool::ClearTasks()
-{
-	if (IsWorking())
-	{
-		return false;
-	}
-	while (!m_taskList.empty())
-	{
-		m_taskList.pop();
-	}
-	return true;
+	Terminate();
+	FOR_EACH_THREAD0(Join);
+	::CloseHandle(m_hWorkingEvt);
+	::CloseHandle(m_hIdleEvt);
+	::DeleteCriticalSection(&m_csObj);
 }
 
 
-SevenTask SevenWorkerPool::getTask()
+void SevenWorkerPool::Terminate()
 {
-	::WaitForSingleObject(m_workingEvent, INFINITE);
 	{
 		AUTO_SCOPE_LOCK();
-		auto cur_thread = ::GetCurrentThread();
-		if (m_taskList.empty())
+		while(!m_taskList.empty())
 		{
-			if (::GetThreadPriority(cur_thread) != THREAD_PRIORITY_IDLE)
-			{
-				if(m_poolSize <= ++m_doneCount)
-				{
-					::SetEvent(m_doneEvent);
-					::ResetEvent(m_workingEvent);
-				}
-				::SetThreadPriority(cur_thread, THREAD_PRIORITY_IDLE);
-			}
-			::SwitchToThread();
-			
-			return SevenTask();
-		}
-		else
-		{
-			if (::GetThreadPriority(cur_thread) != THREAD_PRIORITY_NORMAL)
-			{
-				::SetThreadPriority(cur_thread, THREAD_PRIORITY_NORMAL);
-				--m_doneCount;
-			}
-			auto task = m_taskList.front();
 			m_taskList.pop();
-			return task;
 		}
 	}
+	setTerminate(true);
+	::SetEvent(m_hIdleEvt);
+	::SetEvent(m_hWorkingEvt);
 }
 
 
-void SevenWorkerPool::Join()
+bool SevenWorkerPool::runTask()
 {
-	FOR_EACH_THREAD0(Join);
+	SevenTask task;
+	{
+		AUTO_SCOPE_LOCK();
+
+		if (!m_taskList.empty())
+		{
+			task = m_taskList.front();
+			m_taskList.pop();
+		}
+	}
+	if (task)
+	{
+		task();
+		if (task.Notify)
+		{
+			task.Notify();
+		}
+	}
+	else
+	{
+		::SignalObjectAndWait(m_hIdleEvt, m_hWorkingEvt, INFINITE, FALSE);
+	}
+	
+	return !needTerminate();
 }
 
 //void SevenWorkerPool::SetPoolSize(unsigned int size)
@@ -147,62 +102,48 @@ void SevenWorkerPool::Join()
 //	m_poolSize = size;
 //}
 
-void SevenWorkerPool::SubmitTask(const std::function<void()>& task)
-{
-	m_taskList.push(SevenTask(task));
-}
-
 void SevenWorkerPool::SubmitTask(const std::function<void()>& task, const std::function<void()>& notify)
 {
+	AUTO_SCOPE_LOCK();
 	m_taskList.push(SevenTask(task, notify));
-}
-
-bool SevenWorkerPool::WaitDone(DWORD timeout)
-{
-	timeout = timeout>0 ? timeout : INFINITE;
-	return WAIT_TIMEOUT != ::WaitForSingleObject(m_doneEvent, timeout);
-}
-
-void SevenWorkerPool::Execute(const std::function<void()>& task, std::function<void()> notify)
-{
-	{
-		AUTO_SCOPE_LOCK();
-		SubmitTask(task, notify);
-	}
-	Start();
+	::SetEvent(m_hWorkingEvt);
 }
 
 unsigned int SevenWorkerPool::GetPoolSize() const
 {
-	return m_poolSize;
+	return m_pool_size_;
 }
 
 bool SevenWorkerPool::IsWorking()
 {
-	return WAIT_TIMEOUT == ::WaitForSingleObject(m_doneEvent, 0);
-}
-
-void SevenWorkerPool::NotifyDone(const std::function<void()>& notify)
-{
-	m_notify_done = notify;
-}
-
-DWORD WINAPI SevenWorkerPool::DaemonThreadProc(_In_ LPVOID lpParameter)
-{
-	auto* pthis = reinterpret_cast<SevenWorkerPool*>(lpParameter);
-	while (!pthis->m_stop)
 	{
-		::WaitForSingleObject(pthis->m_workingEvent, INFINITE);
-		pthis->WaitDone();
-		if (pthis->m_notify_done)
+		AUTO_SCOPE_LOCK();
+		if (!m_taskList.empty())
 		{
-			pthis->m_notify_done();
-			pthis->m_notify_done = nullptr;
+			return true;
 		}
 	}
-	return 0;
+	
+	for (auto itFind = m_workList.begin(); itFind != m_workList.end(); ++itFind)
+	{
+		if ((*itFind)->GetThreadState() == SevenThread::THREAD_RUNNING)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
+
+bool SevenWorkerPool::needTerminate()
+{
+	return 1 == ::InterlockedCompareExchange(&m_lTerminate, 1, 1);
+}
+
+void SevenWorkerPool::setTerminate(bool yes)
+{
+	::InterlockedExchange(&m_lTerminate, static_cast<LONG>(yes));
+}
 
 SimpleMemoryPool::SimpleMemoryPool()
 {

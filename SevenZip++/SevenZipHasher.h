@@ -2,7 +2,8 @@
 #include "NonCopyable.h"
 #include "SevenZipLibrary.h"
 #include "SevenCryptLibrary.h"
-#include <tuple>
+#include <map>
+#include <functional>
 
 struct IHasher;
 
@@ -34,9 +35,9 @@ private:
 #define DECLARE_MEMORY_HASH(method, cate) TString Memory##method(const byte* data, unsigned int length) \
 	{std::string _src = memoryHash(cate, data, length); return strTotstr(_src);}
 
-#define DECLARE_FILES_HASH(method, cate) std::vector< std::tuple<std::string, TString> >& \
-	Files##method(const TCHAR* dir_path, const TCHAR* pattern) \
-	{ filesHash(cate, dir_path, pattern); return m_filesHash;}
+#define DECLARE_FILES_HASH(method, cate) void \
+	Files##method(const TCHAR* dir_path, const TCHAR* pattern, std::function<void(const TString&)> result_call) \
+	{ filesHash(cate, dir_path, pattern, result_call);}
 
 public:
 	SevenZipHasher(const SevenZipLibrary& seven, const SevenCryptLibrary& crypt);
@@ -74,11 +75,11 @@ private:
 	void readFile(std::ifstream* _file, const TCHAR* file_path);
 	std::string byteHex(const byte* src, unsigned int src_len);
 	TString strTotstr(const std::string&);
-	void filesHash(NHasherCate::HasherCate c, const TCHAR* direct, const TCHAR* pattern);
-	void filesHash(NHasherCate::HasherCate c, const std::vector<TString>& files);
-	void submitTask(NHasherCate::HasherCate c, const TString& file_path);
+	void filesHash(NHasherCate::HasherCate c, const TCHAR* direct, const TCHAR* pattern, const std::function<void(const TString&)>& result_call);
+	void filesHash(NHasherCate::HasherCate c, const std::vector<TString>& files, const std::function<void(const TString&)>& result_call);
+	void submitTask(NHasherCate::HasherCate c, const TString& file_path, const std::function<void(const TString&)>& result_call);
 
-	// 由于task为异步调用，会储存在内部queue中，所以task的参数列表中不能出现指针或者引用类型
+	// task为异步调用，会储存在内部queue中
 	void fileHashTask(NHasherCate::HasherCate c, TString file_path);
 
 private:
@@ -88,7 +89,7 @@ private:
 	SevenWorkerPool* m_threadpool;
 	SimpleMemoryPool* m_mempool;
 	CRITICAL_SECTION m_csObj;
-	std::vector< std::tuple<std::string, TString> > m_filesHash;
+	std::map< TString, std::string> m_filesHash;
 };
 
 } // namespace SevenZip
